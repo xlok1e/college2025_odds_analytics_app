@@ -1,0 +1,241 @@
+/* Основное окно */
+QMainWindow {
+    background-color: #fafafa;
+}
+
+/* Общие стили для виджетов */
+QWidget {
+    font-family: "Segoe UI", "Ubuntu", "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    color: #262626;
+}
+
+/* Карточки */
+.card {
+    background-color: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+}
+
+/* Кнопки */
+QPushButton {
+    background-color: #5b21b6;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+QPushButton:hover {
+    background-color: #6d28d9;
+}
+
+QPushButton:pressed {
+    background-color: #4c1d95;
+}
+
+QPushButton:disabled {
+    background-color: #e5e5e5;
+    color: #a3a3a3;
+}
+
+/* Вторичные кнопки */
+QPushButton[class="secondary"] {
+    background-color: #f5f5f5;
+    color: #262626;
+}
+
+QPushButton[class="secondary"]:hover {
+    background-color: #e5e5e5;
+}
+
+/* Деструктивные кнопки */
+QPushButton[class="destructive"] {
+    background-color: rgba(220, 38, 38, 0.1);
+    color: #dc2626;
+    border: 1px solid rgba(220, 38, 38, 0.2);
+}
+
+QPushButton[class="destructive"]:hover {
+    background-color: rgba(220, 38, 38, 0.2);
+}
+
+/* Таблицы */
+QTableWidget {
+    background-color: #ffffff;
+    border: none;
+    gridline-color: #e5e5e5;
+    selection-background-color: rgba(124, 58, 237, 0.5);
+}
+
+QTableWidget::item {
+    padding: 12px;
+    border-bottom: 1px solid #e5e5e5;
+}
+
+QTableWidget::item:selected {
+    background-color: rgba(124, 58, 237, 0.5);
+}
+
+QTableWidget::item:hover {
+    background-color: rgba(245, 245, 245, 0.5);
+}
+
+QHeaderView::section {
+    background-color: transparent;
+    color: #737373;
+    padding: 12px;
+    border: none;
+    border-bottom: 1px solid #e5e5e5;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+/* Скроллбары */
+QScrollBar:vertical {
+    border: none;
+    background-color: #f5f5f5;
+    width: 10px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #d4d4d4;
+    border-radius: 5px;
+    min-height: 20px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #a3a3a3;
+}
+
+QScrollBar:horizontal {
+    border: none;
+    background-color: #f5f5f5;
+    height: 10px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: #d4d4d4;
+    border-radius: 5px;
+    min-width: 20px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: #a3a3a3;
+}
+
+QScrollBar::add-line, QScrollBar::sub-line {
+    border: none;
+    background: none;
+}
+
+/* Комбобоксы (select) */
+QComboBox {
+    background-color: #fafafa;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: #262626;
+}
+
+QComboBox:hover {
+    border-color: #5b21b6;
+}
+
+QComboBox:focus {
+    border: 2px solid #5b21b6;
+}
+
+QComboBox::drop-down {
+    border: none;
+    padding-right: 8px;
+}
+
+QComboBox::down-arrow {
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 6px solid #737373;
+    width: 0;
+    height: 0;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+    selection-background-color: #f5f5f5;
+    selection-color: #262626;
+    padding: 4px;
+}
+
+/* Лейблы */
+QLabel {
+    color: #262626;
+}
+
+QLabel[class="title"] {
+    font-size: 24px;
+    font-weight: 600;
+    color: #262626;
+}
+
+QLabel[class="subtitle"] {
+    font-size: 14px;
+    color: #737373;
+}
+
+QLabel[class="muted"] {
+    color: #737373;
+    font-size: 12px;
+}
+
+QLabel[class="header"] {
+    font-size: 18px;
+    font-weight: 600;
+    color: #262626;
+}
+
+/* Диалоги */
+QDialog {
+    background-color: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+}
+
+/* Текстовые поля */
+QLineEdit, QTextEdit {
+    background-color: #fafafa;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: #262626;
+}
+
+QLineEdit:focus, QTextEdit:focus {
+    border: 2px solid #5b21b6;
+}
+
+/* Группы */
+QGroupBox {
+    background-color: rgba(245, 245, 245, 0.3);
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 10px;
+}
+
+QGroupBox::title {
+    color: #262626;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 8px;
+}
