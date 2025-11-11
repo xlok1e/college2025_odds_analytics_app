@@ -192,10 +192,12 @@ class EventsList(QWidget):
         layout.setSpacing(0)
         
         card = QWidget()
+        card.setObjectName("eventsCard")
         card.setStyleSheet(f"""
-            QWidget {{
+            QWidget#eventsCard {{
                 background-color: {COLORS['card']};
                 border: 1px solid {COLORS['border']};
+                border-bottom: none;
                 border-radius: 8px;
             }}
         """)
@@ -204,15 +206,15 @@ class EventsList(QWidget):
         card_layout.setSpacing(0)
         
         header = QWidget()
-        header.setStyleSheet(f"border-bottom: 1px solid {COLORS['border']}; border-radius: 0px;")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(24, 16, 24, 16)
+        header_layout.setContentsMargins(16, 16, 16, 16)
         
         title = QLabel("Спортивные события")
         title_font = QFont()
         title_font.setPointSize(14)
         title_font.setBold(True)
         title.setFont(title_font)
+        title.setStyleSheet("border: none; font-size: 18px")
         header_layout.addWidget(title)
         
         header_layout.addStretch()
@@ -292,6 +294,7 @@ class EventsList(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setStyleSheet(f"background-color: {COLORS['card']};")
         
         for row, event in enumerate(self.events):
             table.setItem(row, 0, QTableWidgetItem(event.sport))
