@@ -64,6 +64,7 @@ QTableWidget {
     border: none;
     gridline-color: #e5e5e5;
     selection-background-color: rgba(124, 58, 237, 0.5);
+    font-family: "Google Sans", Arial, sans-serif;
 }
 
 QTableWidget::item {
@@ -72,11 +73,7 @@ QTableWidget::item {
 }
 
 QTableWidget::item:selected {
-    background-color: rgba(124, 58, 237, 0.5);
-}
-
-QTableWidget::item:hover {
-    background-color: rgba(245, 245, 245, 0.5);
+     background-color: #123eb2;
 }
 
 QHeaderView::section {
