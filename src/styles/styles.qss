@@ -6,7 +6,7 @@ QMainWindow {
 /* Общие стили для виджетов */
 QWidget {
     font-family: "Google Sans", Arial, sans-serif;
-    font-size: 14px;
+    font-size: 12px;
     color: #262626;
 }
 
@@ -131,8 +131,6 @@ QScrollBar::add-line, QScrollBar::sub-line {
 QComboBox {
     background-color: #fafafa;
     border: 1px solid #e5e5e5;
-    border-radius: 6px;
-    padding: 8px 12px;
     color: #262626;
 }
 
@@ -161,7 +159,6 @@ QComboBox::down-arrow {
 QComboBox QAbstractItemView {
     background-color: #ffffff;
     border: 1px solid #e5e5e5;
-    border-radius: 6px;
     selection-background-color: #f5f5f5;
     selection-color: #262626;
     padding: 4px;
