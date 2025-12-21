@@ -1,8 +1,17 @@
-from PySide6.QtCore import QSize, Qt
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import QSize
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMainWindow, QVBoxLayout, QWidget
 
-from src.data.mock_data import MOCK_EVENTS
+# Добавляем корневую директорию в path для импорта config и db_manager
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from config import db_config
+from db_manager import DatabaseManager
+from src.data.event_repository import EventRepository
+from src.data.odds_service import OddsService
 from src.styles.theme import COLORS
 from src.ui.widgets.event_detail import EventDetail
 from src.ui.widgets.events_list import EventsList
@@ -12,8 +21,25 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self.db = DatabaseManager(db_config)
+        self.db.initialize()
+
+        self.event_repository = EventRepository(self.db)
+        self.odds_service = OddsService(self.db)
+        self.events = []
         self.selected_event_id = None
+
+        self.load_events()
         self.init_ui()
+
+    def load_events(self):
+        """Загрузка событий из базы данных"""
+        try:
+            self.events = self.event_repository.get_all_events()
+            print(f"✓ Загружено событий: {len(self.events)}")
+        except Exception as e:
+            print(f"✗ Ошибка загрузки событий: {e}")
+            self.events = []
 
     def init_ui(self):
         self.setWindowTitle("Анализ коэффициентов букмекерских контор")
@@ -46,11 +72,11 @@ class MainWindow(QMainWindow):
         content_layout = QHBoxLayout()
         content_layout.setSpacing(16)
 
-        self.events_list = EventsList(MOCK_EVENTS)
+        self.events_list = EventsList(self.events)
         self.events_list.event_selected.connect(self.on_event_selected)
         content_layout.addWidget(self.events_list, 60)
 
-        self.event_detail = EventDetail(None)
+        self.event_detail = EventDetail(None, self.odds_service)
         self.event_detail.event_deleted.connect(self.on_event_deleted)
         content_layout.addWidget(self.event_detail, 40)
 
@@ -58,12 +84,22 @@ class MainWindow(QMainWindow):
 
     def on_event_selected(self, event_id: int):
         self.selected_event_id = event_id
-
-        event = next((e for e in MOCK_EVENTS if e.id == event_id), None)
+        event = self.event_repository.get_event_by_id(event_id)
 
         if event:
+            self.event_detail.set_odds_service(self.odds_service)
             self.event_detail.set_event(event)
 
     def on_event_deleted(self):
-        self.selected_event_id = None
-        self.event_detail.set_event(None)
+        if self.selected_event_id:
+            success = self.event_repository.delete_event(self.selected_event_id)
+            if success:
+                self.load_events()
+                self.events_list.set_events(self.events)
+                self.selected_event_id = None
+                self.event_detail.set_event(None)
+
+    def closeEvent(self, event):
+        """Обработка закрытия окна"""
+        self.db.close()
+        event.accept()

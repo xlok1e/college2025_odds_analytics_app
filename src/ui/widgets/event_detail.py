@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.data.odds_service import OddsService
 from src.models.event import Event as EventModel
 from src.styles.theme import COLORS
 from src.ui.widgets.coefficient_chart import CoefficientChart
@@ -118,11 +119,14 @@ class DeleteConfirmDialog(QDialog):
 class EventDetail(QWidget):
     event_deleted = Signal()
 
-    def __init__(self, event: Optional[EventModel] = None, parent=None):
+    def __init__(self, event: Optional[EventModel] = None, odds_service: Optional[OddsService] = None, parent=None):
         super().__init__(parent)
         self.current_event = event
-        self.selected_bookmaker = "1xBet"
+        self.odds_service = odds_service
+        self.selected_bookmaker = "Все букмекеры"
         self.selected_bet_type = "П1"
+        self.chart = None
+        self.statistics = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -231,12 +235,21 @@ class EventDetail(QWidget):
         params_section = self.create_params_section()
         content_layout.addWidget(params_section)
 
-        self.chart = CoefficientChart(self.selected_bet_type, self.selected_bookmaker)
+        self.chart = CoefficientChart(
+            odds_service=self.odds_service,
+            event_id=self.current_event.id,
+            bet_type=self.selected_bet_type,
+            bookmaker=self.selected_bookmaker
+        )
         self.chart.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.chart.setMinimumWidth(0)
         content_layout.addWidget(self.chart)
 
-        self.statistics = Statistics(self.selected_bet_type)
+        self.statistics = Statistics(
+            odds_service=self.odds_service,
+            event_id=self.current_event.id,
+            bet_type=self.selected_bet_type
+        )
         self.statistics.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.statistics.setMinimumWidth(0)
         content_layout.addWidget(self.statistics)
@@ -611,61 +624,138 @@ class EventDetail(QWidget):
         return section
 
     def create_warning_section(self) -> QWidget:
-        section = QWidget()
-        section.setStyleSheet(f"""
-            QWidget {{
-                background-color: {COLORS['warning_bg']};
-                border: 1px solid {COLORS['warning_border']};
-                border-radius: 8px;
-                padding: 20px;
-            }}
-        """)
+        """Создать секцию с предупреждениями о резких изменениях"""
+        if not self.odds_service or not self.current_event:
+            # Возвращаем пустой виджет если нет данных
+            return QWidget()
 
-        layout = QHBoxLayout(section)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
+        # Получаем резкие изменения из БД
+        try:
+            bet_type_code = self.odds_service.get_bet_type_code(self.selected_bet_type)
+            bet_parameter = self.odds_service.get_bet_parameter(self.selected_bet_type)
+            bookmaker = None if self.selected_bookmaker == "Все букмекеры" else self.selected_bookmaker
 
-        icon = QLabel("⚠")
-        icon.setStyleSheet(f"""
-            background-color: {COLORS['warning_border']};
-            color: {COLORS['warning_text']};
-            font-size: 20px;
-            padding: 8px;
-            border-radius: 16px;
-            min-width: 32px;
-            max-width: 32px;
-            min-height: 32px;
-            max-height: 32px;
-        """)
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(icon)
+            sharp_changes = self.odds_service.detect_sharp_changes(
+                self.current_event.id,
+                bet_type_code,
+                bookmaker,
+                bet_parameter,
+                threshold_percent=10.0,
+                time_window_minutes=60
+            )
 
-        text_layout = QVBoxLayout()
+            if not sharp_changes:
+                # Нет резких изменений - возвращаем пустой виджет
+                return QWidget()
 
-        title = QLabel("Обнаружены резкие изменения")
-        title_font = QFont()
-        title_font.setBold(True)
-        title.setFont(title_font)
-        title.setStyleSheet(f"color: {COLORS['warning_text']}; background: transparent; border: none; padding: 0;")
-        text_layout.addWidget(title)
+            # Создаём секцию с предупреждениями
+            section = QWidget()
+            section.setStyleSheet(f"""
+                QWidget {{
+                    background-color: {COLORS['warning_bg']};
+                    border: 1px solid {COLORS['warning_border']};
+                    border-radius: 8px;
+                    padding: 20px;
+                }}
+            """)
 
-        changes = QLabel(
-            "• 15.03.2025 14:23 - падение на 12.5% за 45 минут (2.10 → 1.84)\n"
-            "• 15.03.2025 16:45 - рост на 15.2% за 30 минут (1.84 → 2.12)"
-        )
-        changes.setStyleSheet(f"color: {COLORS['warning_text']}; background: transparent; border: none; padding: 0; font-size: 12px;")
-        text_layout.addWidget(changes)
+            layout = QHBoxLayout(section)
+            layout.setContentsMargins(20, 20, 20, 20)
+            layout.setSpacing(12)
 
-        layout.addLayout(text_layout)
+            icon = QLabel("⚠")
+            icon.setStyleSheet(f"""
+                background-color: {COLORS['warning_border']};
+                color: {COLORS['warning_text']};
+                font-size: 20px;
+                padding: 8px;
+                border-radius: 16px;
+                min-width: 32px;
+                max-width: 32px;
+                min-height: 32px;
+                max-height: 32px;
+            """)
+            icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(icon)
 
-        return section
+            text_layout = QVBoxLayout()
+
+            title = QLabel("Обнаружены резкие изменения")
+            title_font = QFont()
+            title_font.setBold(True)
+            title.setFont(title_font)
+            title.setStyleSheet(f"color: {COLORS['warning_text']}; background: transparent; border: none; padding: 0;")
+            text_layout.addWidget(title)
+
+            # Формируем текст с изменениями
+            changes_text = []
+            for change in sharp_changes[:5]:  # Показываем максимум 5 изменений
+                dt = change['datetime']
+                if hasattr(dt, 'strftime'):
+                    dt_str = dt.strftime('%d.%m.%Y %H:%M')
+                else:
+                    dt_str = str(dt)
+
+                change_type = change['change_type']
+                percent = change['percent_change']
+                minutes = change['minutes_elapsed']
+                old_val = change['old_value']
+                new_val = change['new_value']
+
+                changes_text.append(
+                    f"• {dt_str} - {change_type} на {percent:.1f}% за {minutes} минут "
+                    f"({old_val:.2f} → {new_val:.2f})"
+                )
+
+            changes = QLabel("\n".join(changes_text))
+            changes.setStyleSheet(f"color: {COLORS['warning_text']}; background: transparent; border: none; padding: 0; font-size: 12px;")
+            text_layout.addWidget(changes)
+
+            layout.addLayout(text_layout)
+
+            return section
+
+        except Exception as e:
+            print(f"✗ Ошибка получения резких изменений: {e}")
+            return QWidget()
 
     def on_params_changed(self):
+        """Обработка изменения параметров анализа"""
         self.selected_bookmaker = self.bookmaker_combo.currentText()
         self.selected_bet_type = self.bet_type_combo.currentText()
 
-        self.chart.update_data(self.selected_bet_type, self.selected_bookmaker)
-        self.statistics.update_data(self.selected_bet_type)
+        if self.chart and self.current_event:
+            self.chart.update_data(self.current_event.id, self.selected_bet_type, self.selected_bookmaker)
+
+        if self.statistics and self.current_event:
+            self.statistics.update_data(self.current_event.id, self.selected_bet_type, self.selected_bookmaker)
+
+        # Обновляем секцию предупреждений
+        self.refresh_warnings()
+
+    def refresh_warnings(self):
+        """Обновить секцию предупреждений"""
+        # Находим и удаляем старую секцию предупреждений
+        layout = self.layout()
+        if layout and layout.count() > 0:
+            widget = layout.itemAt(0).widget()
+            if widget:
+                content_widget = widget.findChild(QWidget, "content_widget")
+                if content_widget:
+                    content_layout = content_widget.layout()
+                    if content_layout:
+                        # Ищем и удаляем старую секцию предупреждений
+                        for i in range(content_layout.count()):
+                            item = content_layout.itemAt(i)
+                            if item and item.widget():
+                                w = item.widget()
+                                # Проверяем, является ли это секцией предупреждений
+                                if w.styleSheet() and 'warning_bg' in w.styleSheet():
+                                    w.deleteLater()
+                                    # Добавляем новую секцию
+                                    new_warning = self.create_warning_section()
+                                    content_layout.insertWidget(i, new_warning)
+                                    break
 
     def show_delete_dialog(self):
         dialog = DeleteConfirmDialog(self.current_event, self)
@@ -673,6 +763,7 @@ class EventDetail(QWidget):
             self.event_deleted.emit()
 
     def set_event(self, event: Optional[EventModel]):
+        """Установить текущее событие"""
         self.current_event = event
 
         layout = self.layout()
@@ -688,3 +779,11 @@ class EventDetail(QWidget):
             else:
                 detail_widget = self.create_detail_widget()
                 layout.addWidget(detail_widget)
+
+    def set_odds_service(self, odds_service: OddsService):
+        """Установить сервис коэффициентов"""
+        self.odds_service = odds_service
+        if self.chart:
+            self.chart.set_odds_service(odds_service)
+        if self.statistics:
+            self.statistics.set_odds_service(odds_service)

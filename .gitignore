@@ -214,3 +214,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Docker
+docker-compose.override.yml
+
+# PostgreSQL
+*.sql.backup
+backup.sql
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application specific
+*.log
+*.db

@@ -387,3 +387,18 @@ class EventsList(QWidget):
             if self.table.item(row, 0).data(Qt.ItemDataRole.UserRole) == event_id:
                 self.table.selectRow(row)
                 break
+
+    def set_events(self, events: List[Event]):
+        """Обновить список событий"""
+        self.events = events
+        self.selected_event_id = None
+
+        # Пересоздаем UI
+        layout = self.layout()
+        if layout:
+            while layout.count():
+                item = layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+
+        self.setup_ui()

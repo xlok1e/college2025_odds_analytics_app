@@ -1,3 +1,5 @@
+from typing import Optional
+
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
@@ -13,6 +15,13 @@ class ChartCanvas(QWidget):
         self.time_labels = time_labels
         self.value_labels = value_labels
         self.setMinimumHeight(250)
+
+    def update_data(self, data_points, time_labels, value_labels):
+        """Обновить данные графика"""
+        self.data_points = data_points
+        self.time_labels = time_labels
+        self.value_labels = value_labels
+        self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -65,10 +74,11 @@ class ChartCanvas(QWidget):
             y = top_margin + (chart_height / 4) * i
             painter.drawText(10, int(y + 5), label)
 
-        x_step = chart_width / (len(self.time_labels) - 1)
-        for i, label in enumerate(self.time_labels):
-            x = left_margin + x_step * i
-            painter.drawText(int(x - 20), top_margin + chart_height + 20, label)
+        if len(self.time_labels) > 1:
+            x_step = chart_width / (len(self.time_labels) - 1)
+            for i, label in enumerate(self.time_labels):
+                x = left_margin + x_step * i
+                painter.drawText(int(x - 20), top_margin + chart_height + 20, label)
 
         if len(self.data_points) > 1:
             path = QPainterPath()
@@ -91,49 +101,51 @@ class ChartCanvas(QWidget):
             painter.setPen(pen)
             painter.drawPath(path)
 
-            for x, y, value in scaled_points:
-                if value != 1.84:
-                    painter.setBrush(QColor(COLORS['chart_1']))
-                    painter.setPen(QPen(QColor(COLORS['card']), 2))
-                    painter.drawEllipse(QPointF(x, y), 5, 5)
-                else:
-                    painter.setBrush(QColor(COLORS['destructive']))
-                    painter.setPen(QPen(QColor(COLORS['card']), 2))
-                    painter.drawEllipse(QPointF(x, y), 6, 6)
+            # Находим минимальное значение для выделения
+            if self.data_points:
+                min_value = min(val for _, _, val in self.data_points)
+
+                for x, y, value in scaled_points:
+                    if abs(value - min_value) < 0.01:
+                        painter.setBrush(QColor(COLORS['destructive']))
+                        painter.setPen(QPen(QColor(COLORS['card']), 2))
+                        painter.drawEllipse(QPointF(x, y), 6, 6)
+                    else:
+                        painter.setBrush(QColor(COLORS['chart_1']))
+                        painter.setPen(QPen(QColor(COLORS['card']), 2))
+                        painter.drawEllipse(QPointF(x, y), 5, 5)
 
 
 class CoefficientChart(QWidget):
-    def __init__(self, bet_type: str = "П1", bookmaker: str = "1xBet", parent=None):
+    """Виджет графика изменения коэффициента"""
+
+    def __init__(self, odds_service=None, event_id: Optional[int] = None,
+                 bet_type: str = "П1", bookmaker: str = "Все букмекеры", parent=None):
         super().__init__(parent)
+        self.odds_service = odds_service
+        self.event_id = event_id
         self.bet_type = bet_type
         self.bookmaker = bookmaker
 
-        self.data_points = [
-            (40, 60, 2.25),
-            (120, 55, 2.30),
-            (200, 70, 2.15),
-            (280, 120, 1.84),
-            (360, 110, 1.90),
-            (440, 90, 2.05),
-            (520, 100, 1.95),
-            (580, 85, 2.10)
-        ]
-
-        self.time_labels = ["10:00", "12:00", "14:00", "16:00"]
-        self.value_labels = ["2.5", "2.3", "2.1", "1.9", "1.7"]
+        self.data_points = []
+        self.time_labels = ["00:00"]
+        self.value_labels = ["0.0"]
 
         from PySide6.QtWidgets import QSizePolicy
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.setMinimumHeight(350)
+
         self.setup_ui()
 
+        if self.odds_service and self.event_id:
+            self.load_data()
+
     def setup_ui(self):
-        # Основной layout без отступов
+        """Создание UI"""
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Контейнер с рамкой
         container = QWidget()
         container.setStyleSheet(f"""
             background-color: {COLORS['card']};
@@ -145,33 +157,64 @@ class CoefficientChart(QWidget):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
 
-        # Заголовок
-        title = QLabel("ГРАФИК ИЗМЕНЕНИЯ КОЭФФИЦИЕНТА")
-        title.setStyleSheet("background: transparent; border: none; padding: 0; font-size: 14px; font-weight: 600;")
-        layout.addWidget(title)
+        self.title_label = QLabel("ГРАФИК ИЗМЕНЕНИЯ КОЭФФИЦИЕНТА")
+        self.title_label.setStyleSheet("background: transparent; border: none; padding: 0; font-size: 14px; font-weight: 600;")
+        layout.addWidget(self.title_label)
 
-        # Параметры
-        params = QLabel(f"{self.bet_type} • {self.bookmaker}")
-        params.setStyleSheet(f"color: {COLORS['muted_foreground']}; font-size: 12px;")
-        layout.addWidget(params)
+        self.params_label = QLabel(f"{self.bet_type} • {self.bookmaker}")
+        self.params_label.setStyleSheet(f"color: {COLORS['muted_foreground']}; font-size: 12px;")
+        layout.addWidget(self.params_label)
 
-        # Добавляем canvas для рисования графика
         self.canvas = ChartCanvas(self.data_points, self.time_labels, self.value_labels)
         layout.addWidget(self.canvas)
 
         main_layout.addWidget(container)
 
-    def update_data(self, bet_type: str, bookmaker: str):
+    def load_data(self):
+        """Загрузка данных из БД"""
+        if not self.odds_service or not self.event_id:
+            return
+
+        try:
+            bet_type_code = self.odds_service.get_bet_type_code(self.bet_type)
+            bet_parameter = self.odds_service.get_bet_parameter(self.bet_type)
+
+            bookmaker = None if self.bookmaker == "Все букмекеры" else self.bookmaker
+
+            data_points, time_labels, value_labels = self.odds_service.get_chart_data(
+                self.event_id,
+                bet_type_code,
+                bookmaker,
+                bet_parameter
+            )
+
+            if data_points:
+                self.data_points = data_points
+                self.time_labels = time_labels
+                self.value_labels = value_labels
+                self.canvas.update_data(data_points, time_labels, value_labels)
+            else:
+                # Нет данных
+                self.data_points = []
+                self.time_labels = ["Нет данных"]
+                self.value_labels = ["0.0"]
+                self.canvas.update_data([], ["Нет данных"], ["0.0"])
+
+        except Exception as e:
+            print(f"✗ Ошибка загрузки данных графика: {e}")
+
+    def update_data(self, event_id: int, bet_type: str, bookmaker: str):
+        """Обновление данных графика"""
+        self.event_id = event_id
         self.bet_type = bet_type
         self.bookmaker = bookmaker
 
-        # Находим контейнер и обновляем label внутри него
-        main_widget = self.layout().itemAt(0).widget()
-        if main_widget:
-            for i in range(main_widget.layout().count()):
-                widget = main_widget.layout().itemAt(i).widget()
-                if isinstance(widget, QLabel) and "•" in widget.text():
-                    widget.setText(f"{bet_type} • {bookmaker}")
-                    break
+        self.params_label.setText(f"{bet_type} • {bookmaker}")
 
-        self.canvas.update()
+        self.load_data()
+
+    def set_odds_service(self, odds_service):
+        """Установить сервис коэффициентов"""
+        self.odds_service = odds_service
+        if self.event_id:
+            self.load_data()
