@@ -192,7 +192,7 @@ class EventDetail(QWidget):
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
         container = QWidget()
-        container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         container.setStyleSheet("QWidget { background: transparent; }")
         scroll.setWidget(container)
 
@@ -201,8 +201,7 @@ class EventDetail(QWidget):
         layout.setSpacing(0)
 
         card = QWidget()
-        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        card.setMaximumWidth(9999)
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         card.setStyleSheet("QWidget { background: transparent; border: none; }")
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(0, 0, 0, 0)
@@ -220,7 +219,7 @@ class EventDetail(QWidget):
         card_layout.addWidget(header)
 
         content = QWidget()
-        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        content.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         content.setStyleSheet("border: none;")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(16, 16, 16, 16)
@@ -241,8 +240,9 @@ class EventDetail(QWidget):
             bet_type=self.selected_bet_type,
             bookmaker=self.selected_bookmaker
         )
-        self.chart.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.chart.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.chart.setMinimumWidth(0)
+        self.chart.setMaximumWidth(9999)
         content_layout.addWidget(self.chart)
 
         self.statistics = Statistics(
@@ -250,8 +250,9 @@ class EventDetail(QWidget):
             event_id=self.current_event.id,
             bet_type=self.selected_bet_type
         )
-        self.statistics.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.statistics.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.statistics.setMinimumWidth(0)
+        self.statistics.setMaximumWidth(9999)
         content_layout.addWidget(self.statistics)
 
         warning = self.create_warning_section()
@@ -324,6 +325,8 @@ class EventDetail(QWidget):
             value_font.setBold(True)
             value.setFont(value_font)
             value.setStyleSheet("background: transparent; border: none; padding: 0;")
+            value.setWordWrap(True)
+            value.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             field_layout.addWidget(value)
 
             grid.addLayout(field_layout, row, col)

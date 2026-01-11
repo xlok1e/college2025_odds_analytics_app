@@ -24,6 +24,9 @@ class MainWindow(QMainWindow):
         self.db = DatabaseManager(db_config)
         self.db.initialize()
 
+        # Сохраняем db_manager для доступа из виджетов
+        self.db_manager = self.db
+
         self.event_repository = EventRepository(self.db)
         self.odds_service = OddsService(self.db)
         self.events = []
@@ -98,6 +101,10 @@ class MainWindow(QMainWindow):
                 self.events_list.set_events(self.events)
                 self.selected_event_id = None
                 self.event_detail.set_event(None)
+
+    def refresh_events(self):
+        self.load_events()
+        self.events_list.set_events(self.events)
 
     def closeEvent(self, event):
         """Обработка закрытия окна"""
