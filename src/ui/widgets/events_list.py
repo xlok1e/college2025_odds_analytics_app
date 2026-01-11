@@ -279,7 +279,6 @@ class EventsList(QWidget):
             QWidget#eventsCard {{
                 background-color: {COLORS['card']};
                 border: 1px solid {COLORS['border']};
-                border-bottom: none;
                 border-radius: 8px;
             }}
         """)
@@ -319,40 +318,28 @@ class EventsList(QWidget):
     def create_empty_state(self) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(24, 64, 24, 64)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        icon = QLabel("📊")
-        icon.setStyleSheet(f"""
-            background-color: {COLORS['muted']};
-            font-size: 32px;
-            padding: 16px;
-            border-radius: 32px;
-            min-width: 64px;
-            max-width: 64px;
-            min-height: 64px;
-            max-height: 64px;
-        """)
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(icon, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch()
+
+        center_widget = QWidget()
+        center_layout = QVBoxLayout(center_widget)
+        center_layout.setContentsMargins(24, 24, 24, 24)
+        center_layout.setSpacing(8)
 
         title = QLabel("События отсутствуют")
-        title_font = QFont()
-        title_font.setPointSize(13)
-        title_font.setBold(True)
-        title.setFont(title_font)
+        title.setStyleSheet("border: none; font-size: 20px; font-weight: bold;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        center_layout.addWidget(title)
 
         desc = QLabel("Вы можете импортировать данные о спортивных событиях")
-        desc.setStyleSheet(f"color: {COLORS['muted_foreground']};")
+        desc.setStyleSheet(f"color: {COLORS['muted_foreground']}; font-size: 14px; border: none;")
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(desc)
+        center_layout.addWidget(desc)
 
-        import_btn = QPushButton("Импортировать данные")
-        import_btn.clicked.connect(self.show_import_dialog)
-        import_btn.setMaximumWidth(200)
-        layout.addWidget(import_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(center_widget)
+        layout.addStretch()
 
         return widget
 
@@ -483,7 +470,6 @@ class EventsList(QWidget):
                 QWidget#eventsCard {{
                     background-color: {COLORS['card']};
                     border: 1px solid {COLORS['border']};
-                    border-bottom: none;
                     border-radius: 8px;
                 }}
             """)
