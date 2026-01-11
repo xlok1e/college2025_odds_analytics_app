@@ -52,11 +52,22 @@ class EventRepository:
         return next((e for e in events if e.id == event_id), None)
 
     def delete_event(self, event_id: int) -> bool:
-        """Удалить событие по ID"""
+        """Удалить событие по ID
+
+        Удаляет событие и все связанные записи коэффициентов
+        благодаря ON DELETE CASCADE в схеме БД
+        """
         try:
-            query = "DELETE FROM events WHERE event_id = %s"
-            self.db.execute_query(query, (event_id,))
-            return True
+            query = "DELETE FROM events WHERE event_id = %s RETURNING event_id"
+            result = self.db.fetch_all(query, (event_id,))
+
+            if result and len(result) > 0:
+                print(f"✓ Событие {event_id} успешно удалено")
+                return True
+            else:
+                print(f"✗ Событие {event_id} не найдено")
+                return False
+
         except Exception as e:
-            print(f"✗ Ошибка удаления события: {e}")
+            print(f"✗ Ошибка удаления события {event_id}: {e}")
             return False

@@ -155,14 +155,13 @@ class CoefficientChart(QWidget):
 
         layout = QVBoxLayout(container)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
 
         self.title_label = QLabel("ГРАФИК ИЗМЕНЕНИЯ КОЭФФИЦИЕНТА")
         self.title_label.setStyleSheet("background: transparent; border: none; padding: 0; font-size: 14px; font-weight: 600;")
         layout.addWidget(self.title_label)
 
         self.params_label = QLabel(f"{self.bet_type} • {self.bookmaker}")
-        self.params_label.setStyleSheet(f"color: {COLORS['muted_foreground']}; font-size: 12px;")
+        self.params_label.setStyleSheet(f"color: {COLORS['muted_foreground']}; font-size: 14px; border: none; margin-bottom: 10px; margin-left: -2px;")
         layout.addWidget(self.params_label)
 
         self.canvas = ChartCanvas(self.data_points, self.time_labels, self.value_labels)

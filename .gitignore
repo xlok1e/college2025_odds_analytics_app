@@ -2,7 +2,7 @@
 __pycache__/
 *.py[codz]
 *$py.class
-src/ui/widgets/__pycache__
+.src/ui/widgets/__pycache__
 
 # C extensions
 *.so

@@ -3,7 +3,14 @@ from pathlib import Path
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QMainWindow, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QVBoxLayout,
+    QWidget,
+)
 
 # Добавляем корневую директорию в path для импорта config и db_manager
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -101,6 +108,26 @@ class MainWindow(QMainWindow):
                 self.events_list.set_events(self.events)
                 self.selected_event_id = None
                 self.event_detail.set_event(None)
+
+                self.show_success_message("Событие успешно удалено")
+            else:
+                self.show_error_message("Не удалось удалить событие. Попробуйте снова.")
+
+    def show_success_message(self, message: str):
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Успех")
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.exec()
+
+    def show_error_message(self, message: str):
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Ошибка")
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Icon.Critical)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.exec()
 
     def refresh_events(self):
         self.load_events()

@@ -29,47 +29,20 @@ class DeleteConfirmDialog(QDialog):
 
     def __init__(self, event: EventModel, parent=None):
         super().__init__(parent)
-        self.event = event
+        self.event_model = event
         self.setWindowTitle("Подтверждение удаления")
         self.setModal(True)
         self.setMinimumWidth(500)
+        self.setMaximumWidth(600)
         self.setup_ui()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
+        layout.setSpacing(4)
         layout.setContentsMargins(24, 24, 24, 24)
 
         header_layout = QHBoxLayout()
 
-        icon = QLabel("🗑")
-        icon.setStyleSheet(f"""
-            background-color: {COLORS['destructive']}20;
-            color: {COLORS['destructive']};
-            font-size: 24px;
-            padding: 8px;
-            border-radius: 20px;
-            min-width: 40px;
-            max-width: 40px;
-            min-height: 40px;
-            max-height: 40px;
-        """)
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(icon)
-
-        title_layout = QVBoxLayout()
-        title = QLabel("Подтверждение удаления")
-        title_font = QFont()
-        title_font.setPointSize(16)
-        title_font.setBold(True)
-        title.setFont(title_font)
-        title_layout.addWidget(title)
-
-        subtitle = QLabel("Это действие нельзя отменить")
-        subtitle.setStyleSheet(f"color: {COLORS['muted_foreground']};")
-        title_layout.addWidget(subtitle)
-
-        header_layout.addLayout(title_layout)
         header_layout.addStretch()
         layout.addLayout(header_layout)
 
@@ -82,34 +55,68 @@ class DeleteConfirmDialog(QDialog):
             }}
         """)
         info_layout = QVBoxLayout(info_widget)
+        info_layout.setSpacing(8)
 
         question = QLabel("Вы действительно хотите удалить событие?")
-        question.setStyleSheet(f"color: {COLORS['muted_foreground']}; background: transparent; border: none; padding: 0;")
+        question.setStyleSheet(f"color: {COLORS['muted_foreground']}; background: transparent; border: none; padding: 0; font-size: 16px;")
         info_layout.addWidget(question)
 
-        event_name = QLabel(f"{self.event.team1} - {self.event.team2}")
+        event_name = QLabel(f"{self.event_model.team1} - {self.event_model.team2}")
         event_font = QFont()
         event_font.setPointSize(13)
         event_font.setBold(True)
         event_name.setFont(event_font)
-        event_name.setStyleSheet("background: transparent; border: none; padding: 0;")
+        event_name.setStyleSheet("background: transparent; border: none; padding: 0; font-size: 14px;")
         info_layout.addWidget(event_name)
 
-        event_date = QLabel(self.event.date)
-        event_date.setStyleSheet(f"color: {COLORS['muted_foreground']}; background: transparent; border: none; padding: 0;")
+        event_date = QLabel(self.event_model.date)
+        event_date.setStyleSheet(f"color: {COLORS['muted_foreground']}; background: transparent; border: none; padding: 0; font-size: 14px;")
         info_layout.addWidget(event_date)
+
+        tournament_label = QLabel(f"{self.event_model.tournament} • {self.event_model.country}")
+        tournament_label.setStyleSheet(f"color: {COLORS['muted_foreground']}; background: transparent; border: none; padding: 0; font-size: 14px;")
+        info_layout.addWidget(tournament_label)
 
         layout.addWidget(info_widget)
 
         buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(12)
 
         cancel_btn = QPushButton("Отмена")
-        cancel_btn.setProperty("class", "secondary")
+        cancel_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {COLORS['foreground']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
+                padding: 10px 24px;
+                font-weight: 600;
+                font-size: 14px;
+                min-width: 100px;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['muted']};
+            }}
+        """)
         cancel_btn.clicked.connect(self.reject)
         buttons_layout.addWidget(cancel_btn)
 
-        delete_btn = QPushButton("Удалить")
-        delete_btn.setProperty("class", "destructive")
+        delete_btn = QPushButton("Удалить событие")
+        delete_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['destructive']};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 24px;
+                font-weight: 600;
+                font-size: 14px;
+                min-width: 140px;
+            }}
+            QPushButton:hover {{
+                background-color: #b91c1c;
+            }}
+        """)
         delete_btn.clicked.connect(self.accept)
         buttons_layout.addWidget(delete_btn)
 
@@ -223,7 +230,7 @@ class EventDetail(QWidget):
         content.setStyleSheet("border: none;")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(16, 16, 16, 16)
-        content_layout.setSpacing(24)
+        content_layout.setSpacing(8)
 
         info_section = self.create_info_section()
         content_layout.addWidget(info_section)
@@ -259,12 +266,28 @@ class EventDetail(QWidget):
         content_layout.addWidget(warning)
 
         delete_section = QWidget()
-        delete_section.setStyleSheet(f"border-top: 1px solid {COLORS['border']}; padding-top: 16px; border-radius: 0px;")
+        delete_section.setStyleSheet("border: none; background: transparent;")
         delete_layout = QVBoxLayout(delete_section)
-        delete_layout.setContentsMargins(0, 16, 0, 0)
+        delete_layout.setContentsMargins(0, 0, 0, 16)
+        delete_layout.setSpacing(0)
 
         delete_btn = QPushButton("Удалить событие")
-        delete_btn.setProperty("class", "destructive")
+        delete_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['destructive']};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+                font-size: 14px;
+                margin-right: 20px;
+                margin-left: 20px;
+            }}
+            QPushButton:hover {{
+                background-color: #b91c1c;
+            }}
+        """)
         delete_btn.clicked.connect(self.show_delete_dialog)
         delete_layout.addWidget(delete_btn)
 
@@ -761,6 +784,8 @@ class EventDetail(QWidget):
                                     break
 
     def show_delete_dialog(self):
+        if not self.current_event:
+            return
         dialog = DeleteConfirmDialog(self.current_event, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.event_deleted.emit()

@@ -4,12 +4,12 @@ from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QVBoxLayout, QWidget
 
 from src.styles.theme import COLORS
 
 
-class StatCard(QWidget):
+class StatCard(QFrame):
     """Карточка со статистическим показателем"""
 
     def __init__(self, label: str, value: str, subtitle: str = "", parent=None):
@@ -20,28 +20,29 @@ class StatCard(QWidget):
         self.setup_ui()
 
     def setup_ui(self):
-        """Создание UI карточки"""
+        self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setStyleSheet(f"""
-            QWidget {{
-                background-color: {COLORS['muted']}30;
+            QFrame {{
+                background-color: {COLORS['card']};
                 border: 1px solid {COLORS['border']};
                 border-radius: 6px;
-                padding: 16px;
+            }}
+            QLabel {{
+                background: transparent;
+                border: none;
             }}
         """)
 
         from PySide6.QtWidgets import QSizePolicy
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.setMaximumWidth(220)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
 
         self.label_widget = QLabel(self.label_text)
         self.label_widget.setStyleSheet(
-            f"color: {COLORS['muted_foreground']}; font-size: 11px; "
-            f"background: transparent; border: none; padding: 0;"
+            f"color: {COLORS['muted_foreground']}; font-size: 12px; padding: 0;"
         )
         layout.addWidget(self.label_widget)
 
@@ -50,14 +51,13 @@ class StatCard(QWidget):
         value_font.setPointSize(20)
         value_font.setBold(True)
         self.value_widget.setFont(value_font)
-        self.value_widget.setStyleSheet("background: transparent; border: none; padding: 0;")
+        self.value_widget.setStyleSheet("padding: 0;")
         layout.addWidget(self.value_widget)
 
         if self.subtitle_text:
             self.subtitle_widget = QLabel(self.subtitle_text)
             self.subtitle_widget.setStyleSheet(
-                f"color: {COLORS['muted_foreground']}; font-size: 11px; "
-                f"background: transparent; border: none; padding: 0;"
+                f"color: {COLORS['muted_foreground']}; font-size: 12px; padding: 0;"
             )
             layout.addWidget(self.subtitle_widget)
 
@@ -107,7 +107,7 @@ class Statistics(QWidget):
 
         layout = QVBoxLayout(container)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
+        layout.setSpacing(0)
 
         title = QLabel("СТАТИСТИКА ПО КОЭФФИЦИЕНТУ")
         title.setStyleSheet(
@@ -118,12 +118,13 @@ class Statistics(QWidget):
 
         self.bet_label = QLabel(self.bet_type)
         self.bet_label.setStyleSheet(
-            f"color: {COLORS['muted_foreground']}; font-size: 12px;"
+            f"color: {COLORS['muted_foreground']}; font-size: 14px; border: none; margin-top: 6px; margin-left: -2px;"
         )
         layout.addWidget(self.bet_label)
 
         grid = QGridLayout()
         grid.setSpacing(16)
+        grid.setContentsMargins(0, 20, 0, 0)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
 
@@ -139,7 +140,7 @@ class Statistics(QWidget):
             QWidget {{
                 border: 1px solid {COLORS['border']};
                 border-radius: 6px;
-                padding: 16px;
+                padding: 0px;
             }}
         """)
         from PySide6.QtWidgets import QSizePolicy
@@ -180,6 +181,7 @@ class Statistics(QWidget):
         grid.addWidget(percent_card, 2, 0, 1, 2)
 
         layout.addLayout(grid)
+        layout.addStretch()
 
         main_layout.addWidget(container)
 
