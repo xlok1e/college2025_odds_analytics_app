@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 
 @dataclass
 class Coefficients:
-    p1: float  
-    x: float   
-    p2: float  
+    p1: float
+    x: float
+    p2: float
 
 
 @dataclass
@@ -21,3 +21,7 @@ class Event:
     records_count: int
     bookmakers: List[str]
     coefficients: Coefficients
+    is_finished: bool = False
+    winner: Optional[str] = None
+    team1_score: Optional[int] = None
+    team2_score: Optional[int] = None

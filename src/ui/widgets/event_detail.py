@@ -326,16 +326,35 @@ class EventDetail(QWidget):
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(12)
 
+        result_text = "—"
+        if self.current_event.is_finished:
+            if self.current_event.winner:
+                score_text = ""
+                if self.current_event.team1_score is not None and self.current_event.team2_score is not None:
+                    score_text = f" ({self.current_event.team1_score}:{self.current_event.team2_score})"
+                result_text = f"{self.current_event.winner}{score_text}"
+            else:
+                result_text = "Ничья"
+                if self.current_event.team1_score is not None and self.current_event.team2_score is not None:
+                    result_text = f"Ничья ({self.current_event.team1_score}:{self.current_event.team2_score})"
+
         fields = [
             ("Вид спорта", self.current_event.sport, 0, 0),
             ("Турнир", self.current_event.tournament, 0, 1),
             ("Страна", self.current_event.country, 1, 0),
             ("Дата и время", self.current_event.date, 1, 1),
-            ("Записей коэффициентов", str(self.current_event.records_count), 2, 0),
-            ("Букмекеры", ", ".join(self.current_event.bookmakers), 2, 1),
+            ("Результат", result_text, 2, 0),
+            ("Записей коэффициентов", str(self.current_event.records_count), 2, 1),
+            ("Букмекеры", ", ".join(self.current_event.bookmakers), 3, 0, 2),
         ]
 
-        for label_text, value_text, row, col in fields:
+        for field in fields:
+            label_text = field[0]
+            value_text = field[1]
+            row = field[2]
+            col = field[3]
+            colspan = field[4] if len(field) > 4 else 1
+
             field_layout = QVBoxLayout()
             field_layout.setSpacing(4)
 
@@ -347,12 +366,20 @@ class EventDetail(QWidget):
             value_font = QFont()
             value_font.setBold(True)
             value.setFont(value_font)
-            value.setStyleSheet("background: transparent; border: none; padding: 0;")
+
+            style = "background: transparent; border: none; padding: 0;"
+            if label_text == "Результат" and self.current_event.is_finished:
+                if self.current_event.winner:
+                    style += f" color: {COLORS['success']};"
+                else:
+                    style += f" color: {COLORS['muted_foreground']};"
+
+            value.setStyleSheet(style)
             value.setWordWrap(True)
             value.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             field_layout.addWidget(value)
 
-            grid.addLayout(field_layout, row, col)
+            grid.addLayout(field_layout, row, col, 1, colspan)
 
         layout.addLayout(grid)
 

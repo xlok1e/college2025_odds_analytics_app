@@ -25,6 +25,16 @@ class EventRepository:
             event_datetime = event_data['event_datetime']
             formatted_date = event_datetime.strftime('%d.%m.%Y %H:%M')
 
+            # Определяем победителя
+            winner = None
+            if event_data.get('is_finished') and event_data.get('winner_team_id'):
+                if event_data['winner_team_id'] == event_data['team1_id']:
+                    winner = event_data['team1_name']
+                elif event_data['winner_team_id'] == event_data['team2_id']:
+                    winner = event_data['team2_name']
+                else:
+                    winner = "Ничья"
+
             # Создаем объект Event
             event = Event(
                 id=event_data['event_id'],
@@ -40,7 +50,11 @@ class EventRepository:
                     p1=coefficients_data.get('p1', 0.0),
                     x=coefficients_data.get('x', 0.0),
                     p2=coefficients_data.get('p2', 0.0)
-                )
+                ),
+                is_finished=event_data.get('is_finished', False),
+                winner=winner,
+                team1_score=event_data.get('team1_score'),
+                team2_score=event_data.get('team2_score')
             )
             events.append(event)
 

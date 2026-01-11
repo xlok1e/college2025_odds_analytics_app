@@ -142,9 +142,15 @@ class DatabaseManager:
                 s.sport_name,
                 t.tournament_name,
                 c.country_name,
+                team1.team_id as team1_id,
                 team1.team_name as team1_name,
+                team2.team_id as team2_id,
                 team2.team_name as team2_name,
                 e.event_datetime,
+                e.is_finished,
+                e.winner_team_id,
+                e.team1_score,
+                e.team2_score,
                 COUNT(DISTINCT or1.odds_record_id) as records_count
             FROM events e
             JOIN tournaments t ON e.tournament_id = t.tournament_id
@@ -154,7 +160,8 @@ class DatabaseManager:
             JOIN teams team2 ON e.team2_id = team2.team_id
             LEFT JOIN odds_records or1 ON e.event_id = or1.event_id
             GROUP BY e.event_id, s.sport_name, t.tournament_name, c.country_name,
-                     team1.team_name, team2.team_name, e.event_datetime
+                     team1.team_id, team1.team_name, team2.team_id, team2.team_name,
+                     e.event_datetime, e.is_finished, e.winner_team_id, e.team1_score, e.team2_score
             ORDER BY e.event_datetime;
         """
         return self.fetch_all(query)
