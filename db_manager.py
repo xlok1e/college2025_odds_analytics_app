@@ -1,8 +1,8 @@
 import os
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
-import psycopg2
+from dotenv import load_dotenv
 from psycopg2 import Error, extensions, pool
 from psycopg2.extras import RealDictCursor
 
@@ -15,22 +15,41 @@ class DatabaseManager:
         self.connection_pool: Optional[pool.SimpleConnectionPool] = None
         self._initialized = False
 
+    @classmethod
+    def from_env(cls) -> "DatabaseManager":
+        load_dotenv()
+
+        config = DatabaseConfig(
+            host=cast(str, os.getenv("DB_HOST")),
+            port=int(cast(str, os.getenv("DB_PORT"))),
+            database=cast(str, os.getenv("DB_NAME")),
+            user=cast(str, os.getenv("DB_USER")),
+            password=cast(str, os.getenv("DB_PASSWORD"))
+        )
+
+        return cls(config)
+
+
     def connect(self) -> None:
-        """Создание пула подключений к базе данных"""
-        try:
-            self.connection_pool = pool.SimpleConnectionPool(
-                minconn=1,
-                maxconn=10,
-                host=self.config.host,
-                port=self.config.port,
-                database=self.config.database,
-                user=self.config.user,
-                password=self.config.password
-            )
-            print("✓ Подключение к PostgreSQL установлено")
-        except Error as e:
-            print(f"✗ Ошибка подключения к PostgreSQL: {e}")
-            raise
+            try:
+                self.connection_pool = pool.SimpleConnectionPool(
+                    minconn=1,
+                    maxconn=10,
+                    host=self.config.host,
+                    port=self.config.port,
+                    database=self.config.database,
+                    user=self.config.user,
+                    password=self.config.password,
+                    sslmode='prefer',
+                    connect_timeout=30
+                )
+                print("✓ Подключение к PostgreSQL установлено")
+            except Exception as e:
+                print(f"✗ Ошибка подключения к PostgreSQL: {e}")
+                print(f"  Хост: {self.config.host}:{self.config.port}")
+                print(f"  База данных: {self.config.database}")
+                print(f"  Пользователь: {self.config.user}")
+                raise
 
     def initialize(self) -> None:
         """Инициализация базы данных: подключение, создание таблиц, заполнение данными"""
@@ -165,6 +184,77 @@ class DatabaseManager:
             ORDER BY e.event_datetime;
         """
         return self.fetch_all(query)
+
+    def get_event_with_details(self, event_id: int) -> Optional[Dict[str, Any]]:
+        """Получение события со всеми деталями одним запросом (оптимизированный)"""
+        query = """
+            WITH event_bookmakers AS (
+                SELECT
+                    orr.event_id,
+                    array_agg(DISTINCT b.bookmaker_name ORDER BY b.bookmaker_name) as bookmakers
+                FROM odds_records orr
+                JOIN bookmakers b ON orr.bookmaker_id = b.bookmaker_id
+                WHERE orr.event_id = %s
+                GROUP BY orr.event_id
+            ),
+            latest_odds AS (
+                SELECT
+                    orr.event_id,
+                    bt.bet_type_code,
+                    orr.odds_value,
+                    ROW_NUMBER() OVER (PARTITION BY orr.event_id, bt.bet_type_code
+                                       ORDER BY orr.recorded_at DESC) as rn
+                FROM odds_records orr
+                JOIN bet_types bt ON orr.bet_type_id = bt.bet_type_id
+                WHERE orr.event_id = %s
+                  AND bt.bet_type_code IN ('win_1', 'draw', 'win_2')
+                  AND orr.bet_parameter IS NULL
+            ),
+            coefficients AS (
+                SELECT
+                    event_id,
+                    MAX(CASE WHEN bet_type_code = 'win_1' THEN odds_value END) as p1,
+                    MAX(CASE WHEN bet_type_code = 'draw' THEN odds_value END) as x,
+                    MAX(CASE WHEN bet_type_code = 'win_2' THEN odds_value END) as p2
+                FROM latest_odds
+                WHERE rn = 1
+                GROUP BY event_id
+            )
+            SELECT
+                e.event_id,
+                s.sport_name,
+                t.tournament_name,
+                c.country_name,
+                team1.team_id as team1_id,
+                team1.team_name as team1_name,
+                team2.team_id as team2_id,
+                team2.team_name as team2_name,
+                e.event_datetime,
+                e.is_finished,
+                e.winner_team_id,
+                e.team1_score,
+                e.team2_score,
+                COUNT(DISTINCT or1.odds_record_id) as records_count,
+                COALESCE(eb.bookmakers, ARRAY[]::text[]) as bookmakers,
+                COALESCE(coef.p1, 0.0) as p1,
+                COALESCE(coef.x, 0.0) as x,
+                COALESCE(coef.p2, 0.0) as p2
+            FROM events e
+            JOIN tournaments t ON e.tournament_id = t.tournament_id
+            JOIN sports s ON t.sport_id = s.sport_id
+            JOIN countries c ON t.country_id = c.country_id
+            JOIN teams team1 ON e.team1_id = team1.team_id
+            JOIN teams team2 ON e.team2_id = team2.team_id
+            LEFT JOIN odds_records or1 ON e.event_id = or1.event_id
+            LEFT JOIN event_bookmakers eb ON e.event_id = eb.event_id
+            LEFT JOIN coefficients coef ON e.event_id = coef.event_id
+            WHERE e.event_id = %s
+            GROUP BY e.event_id, s.sport_name, t.tournament_name, c.country_name,
+                     team1.team_id, team1.team_name, team2.team_id, team2.team_name,
+                     e.event_datetime, e.is_finished, e.winner_team_id, e.team1_score, e.team2_score,
+                     eb.bookmakers, coef.p1, coef.x, coef.p2;
+        """
+        return self.fetch_one(query, (event_id, event_id, event_id))
 
     def get_event_bookmakers(self, event_id: int) -> List[str]:
         """Получение списка букмекеров для события"""

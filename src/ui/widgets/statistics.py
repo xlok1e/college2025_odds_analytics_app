@@ -2,11 +2,12 @@
 
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QVBoxLayout, QWidget
 
 from src.styles.theme import COLORS
+from src.ui.workers.data_loader import StatisticsDataLoader
 
 
 class StatCard(QFrame):
@@ -74,8 +75,10 @@ class StatCard(QFrame):
 class Statistics(QWidget):
     """Виджет статистики по коэффициенту"""
 
+    data_loaded = Signal()  # Сигнал о завершении загрузки данных
+
     def __init__(self, odds_service=None, event_id: Optional[int] = None,
-                 bet_type: str = "П1", parent=None):
+                 bet_type: str = "П1", parent=None, auto_load=False):
         super().__init__(parent)
         self.odds_service = odds_service
         self.event_id = event_id
@@ -87,10 +90,14 @@ class Statistics(QWidget):
         self.changes_card = None
         self.percent_value_label = None
 
+        self.loader_thread = None
+        self.loader_worker = None
+
         self.setup_ui()
 
-        if self.odds_service and self.event_id:
-            self.load_data()
+        # Загружаем данные только если auto_load=True
+        if auto_load and self.odds_service and self.event_id:
+            self.load_data_async()
 
     def setup_ui(self):
         """Создание UI"""
@@ -185,81 +192,140 @@ class Statistics(QWidget):
 
         main_layout.addWidget(container)
 
-    def load_data(self, bookmaker: Optional[str] = None):
-        """Загрузка данных из БД"""
+    def load_data_async(self, bookmaker: Optional[str] = None):
+        """Асинхронная загрузка данных из БД"""
         if not self.odds_service or not self.event_id:
             return
 
+        # Проверяем что виджет не был удален
         try:
-            bet_type_code = self.odds_service.get_bet_type_code(self.bet_type)
-            bet_parameter = self.odds_service.get_bet_parameter(self.bet_type)
+            if not self.bet_label or self.bet_label.isHidden():
+                return
+        except RuntimeError:
+            # Виджет уже удален
+            return
 
-            bookmaker_filter = None if bookmaker == "Все букмекеры" else bookmaker
+        # Показываем индикатор загрузки
+        self.bet_label.setText(f"{self.bet_type} • Загрузка...")
 
-            stats = self.odds_service.get_odds_statistics(
-                self.event_id,
-                bet_type_code,
-                bookmaker_filter,
-                bet_parameter
-            )
+        # Останавливаем предыдущую загрузку если она еще идет
+        if self.loader_thread and self.loader_thread.isRunning():
+            self.loader_thread.quit()
+            self.loader_thread.wait()
 
-            if stats['changes_count'] > 0:
-                # Обновляем карточки
-                min_datetime = stats['min_datetime']
-                if hasattr(min_datetime, 'strftime'):
-                    min_dt_str = min_datetime.strftime('%d.%m.%Y %H:%M')
-                else:
-                    min_dt_str = str(min_datetime)
+        # Создаем новый поток для загрузки данных
+        self.loader_thread = QThread()
+        self.loader_worker = StatisticsDataLoader(
+            self.odds_service,
+            self.event_id,
+            self.bet_type
+        )
+        self.loader_worker.moveToThread(self.loader_thread)
 
-                max_datetime = stats['max_datetime']
-                if hasattr(max_datetime, 'strftime'):
-                    max_dt_str = max_datetime.strftime('%d.%m.%Y %H:%M')
-                else:
-                    max_dt_str = str(max_datetime)
+        # Подключаем сигналы
+        self.loader_thread.started.connect(self.loader_worker.run)
+        self.loader_worker.finished.connect(self.on_data_loaded)
+        self.loader_worker.error.connect(self.on_data_error)
+        self.loader_worker.finished.connect(self.loader_thread.quit)
+        self.loader_worker.error.connect(self.loader_thread.quit)
 
+        # Запускаем поток
+        self.loader_thread.start()
+
+    def on_data_loaded(self, stats):
+        """Обработка загруженных данных"""
+        # ВСЕГДА испускаем сигнал, даже если виджет удален
+        self.data_loaded.emit()
+
+        # Проверяем что виджет не был удален
+        try:
+            if not self.bet_label or self.bet_label.isHidden():
+                return
+        except RuntimeError:
+            # Виджет уже удален
+            return
+
+        self.bet_label.setText(self.bet_type)
+
+        if stats['changes_count'] > 0:
+            # Обновляем карточки
+            min_datetime = stats['min_datetime']
+            if hasattr(min_datetime, 'strftime'):
+                min_dt_str = min_datetime.strftime('%d.%m.%Y %H:%M')
+            else:
+                min_dt_str = str(min_datetime)
+
+            max_datetime = stats['max_datetime']
+            if hasattr(max_datetime, 'strftime'):
+                max_dt_str = max_datetime.strftime('%d.%m.%Y %H:%M')
+            else:
+                max_dt_str = str(max_datetime)
+
+            try:
                 self.min_card.update_value(f"{stats['min_value']:.2f}", min_dt_str)
                 self.max_card.update_value(f"{stats['max_value']:.2f}", max_dt_str)
                 self.avg_card.update_value(f"{stats['avg_value']:.2f}")
                 self.changes_card.update_value(str(stats['changes_count']))
+            except (RuntimeError, AttributeError):
+                # Виджеты уже удалены
+                return
 
-                # Обновляем процент изменения
-                percent = stats['percent_change']
-                percent_text = f"{percent:+.1f}%"
+            # Обновляем процент изменения
+            percent = stats['percent_change']
+            percent_text = f"{percent:+.1f}%"
 
-                # Выбираем цвет в зависимости от направления изменения
-                if percent > 0:
-                    color = COLORS.get('success', '#22c55e')
-                elif percent < 0:
-                    color = COLORS['destructive']
-                else:
-                    color = COLORS['muted_foreground']
+            # Выбираем цвет в зависимости от направления изменения
+            if percent > 0:
+                color = COLORS.get('success', '#22c55e')
+            elif percent < 0:
+                color = COLORS['destructive']
+            else:
+                color = COLORS['muted_foreground']
 
+            try:
                 self.percent_value_label.setText(percent_text)
                 self.percent_value_label.setStyleSheet(
                     f"color: {color}; background: transparent; border: none; padding: 0;"
                 )
-            else:
-                # Нет данных
+            except (RuntimeError, AttributeError):
+                # Виджеты уже удалены
+                return
+        else:
+            # Нет данных
+            try:
                 self.min_card.update_value("—", "")
                 self.max_card.update_value("—", "")
                 self.avg_card.update_value("—")
                 self.changes_card.update_value("0")
                 self.percent_value_label.setText("—")
+            except (RuntimeError, AttributeError):
+                # Виджеты уже удалены
+                return
 
-        except Exception as e:
-            print(f"✗ Ошибка загрузки статистики: {e}")
+    def on_data_error(self, error_message):
+        """Обработка ошибки загрузки"""
+        # ВСЕГДА испускаем сигнал, даже если виджет удален
+        self.data_loaded.emit()
+
+        print(f"✗ Ошибка загрузки статистики: {error_message}")
+
+        # Проверяем что виджет не был удален
+        try:
+            if self.bet_label and not self.bet_label.isHidden():
+                self.bet_label.setText(f"{self.bet_type} • Ошибка загрузки")
+        except RuntimeError:
+            # Виджет уже удален
+            pass
 
     def update_data(self, event_id: int, bet_type: str, bookmaker: Optional[str] = None):
         """Обновление данных статистики"""
         self.event_id = event_id
         self.bet_type = bet_type
 
-        self.bet_label.setText(bet_type)
-
-        self.load_data(bookmaker)
+        self.load_data_async(bookmaker)
 
     def set_odds_service(self, odds_service):
         """Установить сервис коэффициентов"""
         self.odds_service = odds_service
         if self.event_id:
-            self.load_data()
+            self.load_data_async()

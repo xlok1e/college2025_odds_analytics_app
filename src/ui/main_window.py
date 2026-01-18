@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, QThread
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -22,14 +22,24 @@ from src.data.odds_service import OddsService
 from src.styles.theme import COLORS
 from src.ui.widgets.event_detail import EventDetail
 from src.ui.widgets.events_list import EventsList
+from src.ui.workers.data_loader import EventLoader
 
 
 class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.db = DatabaseManager(db_config)
-        self.db.initialize()
+
+        # Безопасная инициализация БД
+        try:
+            self.db = DatabaseManager.from_env()
+            self.db.initialize()
+            print("✓ База данных успешно инициализирована")
+        except Exception as e:
+            print(f"✗ Критическая ошибка инициализации БД: {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
 
         # Сохраняем db_manager для доступа из виджетов
         self.db_manager = self.db
@@ -38,6 +48,9 @@ class MainWindow(QMainWindow):
         self.odds_service = OddsService(self.db)
         self.events = []
         self.selected_event_id = None
+
+        self.event_loader_thread = None
+        self.event_loader_worker = None
 
         self.load_events()
         self.init_ui()
@@ -93,12 +106,69 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(content_layout)
 
     def on_event_selected(self, event_id: int):
+        """Асинхронная загрузка события при клике"""
         self.selected_event_id = event_id
-        event = self.event_repository.get_event_by_id(event_id)
 
+        # Показываем состояние загрузки СРАЗУ
+        self.event_detail.show_loading_state()
+
+        # Останавливаем предыдущую загрузку если она еще идет
+        if self.event_loader_thread and self.event_loader_thread.isRunning():
+            self.event_loader_thread.quit()
+            self.event_loader_thread.wait()
+
+        # Создаем новый поток для загрузки события
+        self.event_loader_thread = QThread()
+        self.event_loader_worker = EventLoader(
+            self.event_repository,
+            event_id
+        )
+        self.event_loader_worker.moveToThread(self.event_loader_thread)
+
+        # Подключаем сигналы
+        self.event_loader_thread.started.connect(self.event_loader_worker.run)
+        self.event_loader_worker.finished.connect(self.on_event_loaded)
+        self.event_loader_worker.error.connect(self.on_event_load_error)
+        self.event_loader_worker.finished.connect(self.event_loader_thread.quit)
+        self.event_loader_worker.error.connect(self.event_loader_thread.quit)
+
+        # Запускаем поток
+        self.event_loader_thread.start()
+
+    def on_event_loaded(self, event):
+        """Обработка загруженного события"""
         if event:
-            self.event_detail.set_odds_service(self.odds_service)
+            # Устанавливаем событие - виджеты создаются с уже установленным odds_service
             self.event_detail.set_event(event)
+        else:
+            self.show_error_message("Событие не найдено")
+
+    def on_event_load_error(self, error_message):
+        """Обработка ошибки загрузки события"""
+        print(f"✗ Ошибка загрузки события: {error_message}")
+        self.show_error_message(f"Ошибка загрузки события: {error_message}")
+
+    def closeEvent(self, event):
+        """Обработка закрытия окна - останавливаем все потоки"""
+        # Останавливаем поток загрузки события
+        if self.event_loader_thread and self.event_loader_thread.isRunning():
+            self.event_loader_thread.quit()
+            self.event_loader_thread.wait()
+
+        # Останавливаем потоки в виджете деталей
+        if hasattr(self.event_detail, 'chart') and self.event_detail.chart:
+            if hasattr(self.event_detail.chart, 'loader_thread') and self.event_detail.chart.loader_thread:
+                if self.event_detail.chart.loader_thread.isRunning():
+                    self.event_detail.chart.loader_thread.quit()
+                    self.event_detail.chart.loader_thread.wait()
+
+        if hasattr(self.event_detail, 'statistics') and self.event_detail.statistics:
+            if hasattr(self.event_detail.statistics, 'loader_thread') and self.event_detail.statistics.loader_thread:
+                if self.event_detail.statistics.loader_thread.isRunning():
+                    self.event_detail.statistics.loader_thread.quit()
+                    self.event_detail.statistics.loader_thread.wait()
+
+        event.accept()
 
     def on_event_deleted(self):
         if self.selected_event_id:

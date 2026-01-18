@@ -22,6 +22,7 @@ from src.data.odds_service import OddsService
 from src.models.event import Event as EventModel
 from src.styles.theme import COLORS
 from src.ui.widgets.coefficient_chart import CoefficientChart
+from src.ui.widgets.loading_spinner import LoadingOverlay
 from src.ui.widgets.statistics import Statistics
 
 
@@ -134,21 +135,43 @@ class EventDetail(QWidget):
         self.selected_bet_type = "П1"
         self.chart = None
         self.statistics = None
-        self.setup_ui()
+        self.loading_overlay = None
+        self.loading_components = 0  # Счетчик загружаемых компонентов
+        self._updating = False  # Флаг для предотвращения рекурсии
 
-    def setup_ui(self):
-        main_layout = QVBoxLayout()
+        # Создаем только layout, контент добавим позже
+        main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        # Показываем пустое состояние по умолчанию
         if self.current_event is None:
             empty_widget = self.create_empty_state()
             main_layout.addWidget(empty_widget)
-        else:
-            detail_widget = self.create_detail_widget()
-            main_layout.addWidget(detail_widget)
 
-        self.setLayout(main_layout)
+    def show_loading_state(self):
+        """Показать состояние загрузки - пустой виджет с лоадером"""
+        # Очищаем layout
+        layout = self.layout()
+        if layout:
+            while layout.count():
+                item = layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+
+        # Создаем пустой виджет
+        empty_widget = QWidget()
+        empty_widget.setStyleSheet(f"background-color: {COLORS['background']};")
+        layout.addWidget(empty_widget)
+
+        # Создаем и показываем лоадер
+        if self.loading_overlay:
+            self.loading_overlay.deleteLater()
+
+        self.loading_overlay = LoadingOverlay(self, "Загрузка события...")
+        self.loading_overlay.setGeometry(0, 0, self.width(), self.height())
+        self.loading_overlay.raise_()
+        self.loading_overlay.show()
 
     def create_empty_state(self) -> QWidget:
         widget = QWidget()
@@ -241,26 +264,43 @@ class EventDetail(QWidget):
         params_section = self.create_params_section()
         content_layout.addWidget(params_section)
 
+        # Устанавливаем счетчик загружаемых компонентов
+        self.loading_components = 2  # chart + statistics
+
+        # Создаем виджеты С автозагрузкой данных
         self.chart = CoefficientChart(
             odds_service=self.odds_service,
             event_id=self.current_event.id,
             bet_type=self.selected_bet_type,
-            bookmaker=self.selected_bookmaker
+            bookmaker=self.selected_bookmaker,
+            auto_load=True  # Загружаем данные сразу
         )
         self.chart.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.chart.setMinimumWidth(0)
         self.chart.setMaximumWidth(9999)
+
+        # Подключаем сигнал завершения загрузки
+        self.chart.data_loaded.connect(self.on_component_loaded)
+
         content_layout.addWidget(self.chart)
 
         self.statistics = Statistics(
             odds_service=self.odds_service,
             event_id=self.current_event.id,
-            bet_type=self.selected_bet_type
+            bet_type=self.selected_bet_type,
+            auto_load=True  # Загружаем данные сразу
         )
         self.statistics.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.statistics.setMinimumWidth(0)
         self.statistics.setMaximumWidth(9999)
+
+        # Подключаем сигнал завершения загрузки
+        self.statistics.data_loaded.connect(self.on_component_loaded)
+
         content_layout.addWidget(self.statistics)
+
+        # Данные загружаются автоматически (auto_load=True)
+        # Лоадер скроется когда оба виджета загрузят данные
 
         warning = self.create_warning_section()
         content_layout.addWidget(warning)
@@ -821,8 +861,38 @@ class EventDetail(QWidget):
         """Установить текущее событие"""
         self.current_event = event
 
+        # Останавливаем потоки загрузки в старых виджетах
+        if self.chart:
+            # Отключаем сигналы
+            try:
+                self.chart.data_loaded.disconnect(self.on_component_loaded)
+            except:
+                pass
+
+            if hasattr(self.chart, 'loader_thread') and self.chart.loader_thread:
+                if self.chart.loader_thread.isRunning():
+                    self.chart.loader_thread.quit()
+                    self.chart.loader_thread.wait()
+
+        if self.statistics:
+            # Отключаем сигналы
+            try:
+                self.statistics.data_loaded.disconnect(self.on_component_loaded)
+            except:
+                pass
+
+            if hasattr(self.statistics, 'loader_thread') and self.statistics.loader_thread:
+                if self.statistics.loader_thread.isRunning():
+                    self.statistics.loader_thread.quit()
+                    self.statistics.loader_thread.wait()
+
+        # Обнуляем ссылки на старые виджеты
+        self.chart = None
+        self.statistics = None
+
         layout = self.layout()
         if layout:
+            # Удаляем все виджеты
             while layout.count():
                 item = layout.takeAt(0)
                 if item.widget():
@@ -831,14 +901,61 @@ class EventDetail(QWidget):
             if self.current_event is None:
                 empty_widget = self.create_empty_state()
                 layout.addWidget(empty_widget)
+                # Скрываем лоадер
+                if self.loading_overlay:
+                    self.loading_overlay.hide()
             else:
+                # Создаем виджет с данными
                 detail_widget = self.create_detail_widget()
                 layout.addWidget(detail_widget)
+                # НЕ показываем лоадер здесь - он уже показан через show_loading_state
+                # Просто обновляем счетчик компонентов
+                self.loading_components = 2
+
+    def show_loading(self):
+        """Показать индикатор загрузки поверх контента"""
+        # Если лоадер уже показан через show_loading_state, просто обновляем счетчик
+        if self.loading_overlay and self.loading_overlay.isVisible():
+            self.loading_components = 2
+            self.loading_overlay.raise_()
+            return
+
+        # Не создаем новый лоадер, он уже создан в show_loading_state
+        self.loading_components = 2
+
+    def hide_loading(self):
+        """Скрыть индикатор загрузки"""
+        if self.loading_overlay and self.loading_overlay.isVisible():
+            self.loading_overlay.hide()
+
+    def on_component_loaded(self):
+        """Обработчик завершения загрузки компонента"""
+        self.loading_components -= 1
+        if self.loading_components <= 0:
+            # Все компоненты загружены, скрываем лоадер СРАЗУ
+            self.hide_loading()
+
+    def resizeEvent(self, event):
+        """При изменении размера обновляем позицию лоадера"""
+        super().resizeEvent(event)
+        if self.loading_overlay and self.loading_overlay.isVisible():
+            self.loading_overlay.setGeometry(0, 0, self.width(), self.height())
 
     def set_odds_service(self, odds_service: OddsService):
         """Установить сервис коэффициентов"""
         self.odds_service = odds_service
-        if self.chart:
-            self.chart.set_odds_service(odds_service)
-        if self.statistics:
-            self.statistics.set_odds_service(odds_service)
+
+        # Проверяем что виджеты существуют и не удалены
+        try:
+            if self.chart and not self.chart.isHidden():
+                self.chart.set_odds_service(odds_service)
+        except RuntimeError:
+            # Виджет уже удален
+            pass
+
+        try:
+            if self.statistics and not self.statistics.isHidden():
+                self.statistics.set_odds_service(odds_service)
+        except RuntimeError:
+            # Виджет уже удален
+            pass
