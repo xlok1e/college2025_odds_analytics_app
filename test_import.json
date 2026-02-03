@@ -83,62 +83,6 @@
 				"x": 4.5,
 				"p2": 3.8
 			}
-		},
-		{
-			"sport": "Теннис",
-			"tournament": "ATP Masters",
-			"country": "США",
-			"team1": "Новак Джокович",
-			"team2": "Карлос Алькарас",
-			"date": "21.03.2025 20:00",
-			"bookmakers": ["1xBet", "Parimatch"],
-			"coefficients": {
-				"p1": 2.2,
-				"x": 2,
-				"p2": 1.65
-			}
-		},
-		{
-			"sport": "Футбол",
-			"tournament": "Английская Премьер-Лига",
-			"country": "Англия",
-			"team1": "Манчестер Сити",
-			"team2": "Ливерпуль",
-			"date": "22.03.2025 17:30",
-			"bookmakers": ["1xBet", "Fonbet", "BetBoom", "Parimatch"],
-			"coefficients": {
-				"p1": 2.05,
-				"x": 3.6,
-				"p2": 3.4
-			}
-		},
-		{
-			"sport": "Футбол",
-			"tournament": "Испанская Примера",
-			"country": "Испания",
-			"team1": "Барселона",
-			"team2": "Атлетико Мадрид",
-			"date": "23.03.2025 21:00",
-			"bookmakers": ["Fonbet", "BetBoom"],
-			"coefficients": {
-				"p1": 1.7,
-				"x": 3.8,
-				"p2": 4.5
-			}
-		},
-		{
-			"sport": "Волейбол",
-			"tournament": "Суперлига России",
-			"country": "Россия",
-			"team1": "Зенит Казань",
-			"team2": "Динамо Москва",
-			"date": "24.03.2025 18:00",
-			"bookmakers": ["BetBoom"],
-			"coefficients": {
-				"p1": 1.55,
-				"x": 2,
-				"p2": 2.4
-			}
 		}
 	]
 }

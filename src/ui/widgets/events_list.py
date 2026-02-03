@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from services.import_service import EventImportService, ImportValidationError
 from src.models.event import Event
 from src.styles.theme import COLORS
+from src.ui.workers.import_worker import ImportWorker
 
 
 class HoverDelegate(QStyledItemDelegate):
@@ -43,13 +44,15 @@ class HoverDelegate(QStyledItemDelegate):
 
 class ImportDialog(QDialog):
 
-    def __init__(self, parent=None, db_manager=None):
+    def __init__(self, parent=None, db_manager=None, main_window=None):
         super().__init__(parent)
         self.setWindowTitle("Импорт спортивных событий")
         self.setModal(True)
         self.setMinimumWidth(500)
         self.db_manager = db_manager
+        self.main_window = main_window  # Ссылка на главное окно
         self.import_service = EventImportService(db_manager) if db_manager else None
+        self.import_worker = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -80,12 +83,24 @@ class ImportDialog(QDialog):
         info.setStyleSheet(f"color: {COLORS['muted_foreground']}; font-size: 12px;")
         layout.addWidget(info)
 
+        # Прогресс бар (скрыт по умолчанию)
+        self.progress_label = QLabel("")
+        self.progress_label.setVisible(False)
+        layout.addWidget(self.progress_label)
+
+        from PySide6.QtWidgets import QProgressBar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setTextVisible(True)
+        layout.addWidget(self.progress_bar)
+
         layout.addStretch()
 
         cancel_btn = QPushButton("Отмена")
         cancel_btn.setProperty("class", "secondary")
-        cancel_btn.clicked.connect(self.reject)
+        cancel_btn.clicked.connect(self.cancel_import)
         layout.addWidget(cancel_btn)
+        self.cancel_btn = cancel_btn
 
     def select_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -100,57 +115,241 @@ class ImportDialog(QDialog):
                 QMessageBox.warning(self, "Ошибка", "Сервис импорта не инициализирован")
                 return
 
-            try:
-                # Импорт событий
-                imported_count, errors = self.import_service.import_from_file(file_path)
-
-                if errors:
-                    # Показываем ошибки, но также сообщаем об успешно импортированных
-                    error_msg = f"Импортировано событий: {imported_count}\n\nОшибки:\n"
-                    error_msg += "\n".join(errors[:10])  # Показываем первые 10 ошибок
-                    if len(errors) > 10:
-                        error_msg += f"\n... и еще {len(errors) - 10} ошибок"
-
-                    QMessageBox.warning(self, "Частичный импорт", error_msg)
-                else:
-                    QMessageBox.information(
-                        self,
-                        "Успех",
-                        f"Успешно импортировано событий: {imported_count}"
-                    )
-
-                if imported_count > 0:
-                    self.accept()
-                else:
-                    self.reject()
-
-            except ImportValidationError as e:
-                self.reject()
-                error_dialog = ErrorDialog(self.parent(), error_message=e.message)
-                error_dialog.exec()
-            except Exception as e:
-                self.reject()
+            # Быстрая предварительная валидация файла ПЕРЕД запуском worker
+            validation_error = self.quick_validate_file(file_path)
+            if validation_error:
+                print(f"[ImportDialog] Ошибка валидации файла: {validation_error}")
                 error_dialog = ErrorDialog(
                     self.parent(),
-                    error_message=f"Неожиданная ошибка: {str(e)}"
+                    error_message=validation_error,
+                    show_format_example=True
                 )
                 error_dialog.exec()
+                return
+
+            # Запускаем импорт в отдельном потоке
+            self.start_import(file_path)
+
+    def quick_validate_file(self, file_path: str) -> str:
+        """Быстрая проверка файла перед запуском импорта. Возвращает текст ошибки или None."""
+        import csv
+        import json
+
+        try:
+            # Проверяем расширение файла
+            if not (file_path.lower().endswith('.json') or file_path.lower().endswith('.csv')):
+                return "Неподдерживаемый формат файла. Используйте JSON или CSV."
+
+            # Для JSON - проверяем базовую структуру
+            if file_path.lower().endswith('.json'):
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                except json.JSONDecodeError as e:
+                    return f"Ошибка парсинга JSON файла: {str(e)}"
+                except UnicodeDecodeError:
+                    return "Ошибка чтения файла: неверная кодировка. Используйте UTF-8."
+                except Exception as e:
+                    return f"Ошибка чтения файла: {str(e)}"
+
+                # Проверяем структуру
+                if not isinstance(data, dict):
+                    return "JSON файл должен содержать объект (начинаться с '{')"
+
+                if 'events' not in data:
+                    return "JSON файл должен содержать поле 'events' с массивом событий"
+
+                if not isinstance(data['events'], list):
+                    return "Поле 'events' должно быть массивом (начинаться с '[')"
+
+                if len(data['events']) == 0:
+                    return "Список событий пустой. Добавьте хотя бы одно событие."
+
+            # Для CSV - проверяем наличие заголовков
+            elif file_path.lower().endswith('.csv'):
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        headers = reader.fieldnames
+
+                        if not headers:
+                            return "CSV файл не содержит заголовков"
+
+                        required = ['sport', 'tournament', 'country', 'team1', 'team2', 'date']
+                        missing = [field for field in required if field not in headers]
+
+                        if missing:
+                            return f"В CSV файле отсутствуют обязательные колонки: {', '.join(missing)}"
+
+                except UnicodeDecodeError:
+                    return "Ошибка чтения файла: неверная кодировка. Используйте UTF-8."
+                except Exception as e:
+                    return f"Ошибка чтения CSV файла: {str(e)}"
+
+            # Файл прошел базовую проверку
+            return None
+
+        except Exception as e:
+            return f"Неожиданная ошибка при проверке файла: {str(e)}"
+
+    def start_import(self, file_path: str):
+        """Запуск импорта в фоновом потоке"""
+        print(f"[ImportDialog] Начало импорта файла: {file_path}")
+
+        # Останавливаем предыдущий worker если он еще работает
+        if self.import_worker and self.import_worker.isRunning():
+            print("[ImportDialog] Предыдущий импорт еще выполняется, останавливаем...")
+            self.import_worker.stop()
+            self.import_worker = None
+
+        # Показываем прогресс бар
+        self.progress_label.setText("Импорт данных...")
+        self.progress_label.setVisible(True)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 0)  # Indeterminate progress
+        self.select_btn.setEnabled(False)
+        self.cancel_btn.setText("Отмена")
+
+        # Принудительно обновляем UI
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
+
+        # Создаем и запускаем worker
+        self.import_worker = ImportWorker(self.import_service, file_path)
+        self.import_worker.finished.connect(self.on_import_finished)
+        self.import_worker.error.connect(self.on_import_error)
+        self.import_worker.start()
+
+        print("[ImportDialog] Worker запущен")
+
+    def on_import_finished(self, imported_count: int, errors: list):
+        """Обработка успешного завершения импорта"""
+        print(f"[ImportDialog] Импорт завершен: {imported_count} событий, {len(errors)} ошибок")
+
+        self.progress_label.setVisible(False)
+        self.progress_bar.setVisible(False)
+        self.select_btn.setEnabled(True)
+        self.cancel_btn.setText("Закрыть")
+
+        # Очищаем worker
+        if self.import_worker:
+            self.import_worker.deleteLater()
+            self.import_worker = None
+
+        # Показываем диалоги с результатами
+        if errors:
+            # Показываем ошибки, но также сообщаем об успешно импортированных
+            error_msg = f"Импортировано событий: {imported_count}\n\nОшибки:\n"
+            error_msg += "\n".join(errors[:10])  # Показываем первые 10 ошибок
+            if len(errors) > 10:
+                error_msg += f"\n... и еще {len(errors) - 10} ошибок"
+
+            QMessageBox.warning(self, "Частичный импорт", error_msg)
+        else:
+            QMessageBox.information(
+                self,
+                "Успех",
+                f"Успешно импортировано событий: {imported_count}"
+            )
+
+        # Закрываем диалог
+        if imported_count > 0:
+            self.accept()
+        else:
+            self.reject()
+
+        # ПОСЛЕ закрытия диалога запускаем обновление списка событий
+        if imported_count > 0:
+            print("[ImportDialog] Запуск обновления списка событий после закрытия диалога...")
+            if self.main_window and hasattr(self.main_window, 'refresh_events'):
+                from PySide6.QtCore import QTimer
+                # Небольшая задержка чтобы диалог успел закрыться
+                QTimer.singleShot(100, lambda: self.main_window.refresh_events())
+                print("[ImportDialog] Обновление запланировано")
+            else:
+                print("[ImportDialog] ВНИМАНИЕ: main_window не передан, список не будет обновлен!")
+
+    def on_import_error(self, error_message: str):
+        """Обработка ошибки импорта"""
+        print(f"[ImportDialog] Ошибка импорта: {error_message}")
+
+        self.progress_label.setVisible(False)
+        self.progress_bar.setVisible(False)
+        self.select_btn.setEnabled(True)
+        self.cancel_btn.setText("Закрыть")
+
+        # Очищаем worker
+        if self.import_worker:
+            self.import_worker.deleteLater()
+            self.import_worker = None
+
+        # Определяем тип ошибки для показа соответствующего диалога
+        show_example = self._should_show_example(error_message)
+
+        # Показываем диалог с ошибкой
+        error_dialog = ErrorDialog(
+            self.parent(),
+            error_message=error_message,
+            show_format_example=show_example
+        )
+        error_dialog.exec()
+
+        self.reject()
+
+    def _should_show_example(self, error_message: str) -> bool:
+        """Определяет, нужно ли показывать пример формата"""
+        # Показываем пример только для ошибок формата и валидации
+        validation_keywords = [
+            'обязательные поля',
+            'формат даты',
+            'формат файла',
+            'должен содержать',
+            'должно быть',
+            'парсинга JSON',
+            'коэффициента',
+            'неверное значение',
+            'отсутствуют'
+        ]
+
+        error_lower = error_message.lower()
+        return any(keyword.lower() in error_lower for keyword in validation_keywords)
+
+    def cancel_import(self):
+        """Отмена импорта"""
+        print("[ImportDialog] Отмена импорта")
+
+        if self.import_worker and self.import_worker.isRunning():
+            self.progress_label.setText("Отмена импорта...")
+            print("[ImportDialog] Останавливаем worker...")
+            self.import_worker.stop()
+            self.import_worker.deleteLater()
+            self.import_worker = None
+            print("[ImportDialog] Worker остановлен")
+
+        self.reject()
 
 
 class ErrorDialog(QDialog):
 
-    def __init__(self, parent=None, error_message=None):
+    def __init__(self, parent=None, error_message=None, show_format_example=True):
         super().__init__(parent)
         self.setWindowTitle("Ошибка импорта")
         self.setModal(True)
         self.setMinimumWidth(700)
-        self.setMinimumHeight(600)
         self.error_message = error_message or "Файл имеет неправильный формат данных"
+        self.show_format_example = show_format_example
+
+        # Устанавливаем высоту в зависимости от того, показываем ли пример
+        if show_format_example:
+            self.setMinimumHeight(600)
+        else:
+            self.setMinimumHeight(250)
+
         self.setup_ui()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
+        layout.setSpacing(12)
         layout.setContentsMargins(24, 24, 24, 24)
 
         header_layout = QHBoxLayout()
@@ -187,67 +386,62 @@ class ErrorDialog(QDialog):
         header_layout.addStretch()
         layout.addLayout(header_layout)
 
-        desc = QLabel("Данные должны соответствовать следующей структуре:")
-        layout.addWidget(desc)
+        # Показываем пример формата только если это ошибка валидации
+        if self.show_format_example:
+            desc = QLabel("Пример правильного формата данных:")
+            desc.setStyleSheet(f"color: {COLORS['muted_foreground']}; margin-top: 8px;")
+            layout.addWidget(desc)
 
-        # Создаем табы для JSON и CSV примеров
-        json_label = QLabel("<b>Формат JSON:</b>")
-        layout.addWidget(json_label)
+        # Компактный пример JSON
+        compact_example = '''{
+  "events": [
+    {
+      "sport": "Футбол",
+      "tournament": "Российская Премьер-Лига",
+      "country": "Россия",
+      "team1": "Зенит",
+      "team2": "Спартак",
+      "date": "15.03.2025 19:00",
+      "bookmakers": ["1xBet", "Fonbet"],
+      "coefficients": {
+        "p1": 1.85,
+        "x": 3.45,
+        "p2": 4.20
+      }
+    }
+  ]
+}'''
 
         json_example = QTextEdit()
         json_example.setReadOnly(True)
-        json_example.setMaximumHeight(200)
-        json_example.setPlainText(EventImportService.get_format_example_json())
+        json_example.setFixedHeight(240)
+        json_example.setPlainText(compact_example)
         json_example.setStyleSheet(f"""
             QTextEdit {{
                 background-color: #f5f5f5;
                 border: 1px solid {COLORS['border']};
                 border-radius: 6px;
-                font-family: monospace;
-                font-size: 11px;
-                padding: 8px;
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+                padding: 12px;
+                line-height: 1.4;
             }}
         """)
-        layout.addWidget(json_example)
 
-        csv_label = QLabel("<b>Формат CSV:</b>")
-        csv_label.setStyleSheet("margin-top: 8px;")
-        layout.addWidget(csv_label)
+        if self.show_format_example:
+            layout.addWidget(json_example)
 
-        csv_example = QTextEdit()
-        csv_example.setReadOnly(True)
-        csv_example.setMaximumHeight(100)
-        csv_example.setPlainText(EventImportService.get_format_example_csv())
-        csv_example.setStyleSheet(f"""
-            QTextEdit {{
-                background-color: #f5f5f5;
-                border: 1px solid {COLORS['border']};
-                border-radius: 6px;
-                font-family: monospace;
-                font-size: 11px;
-                padding: 8px;
-            }}
-        """)
-        layout.addWidget(csv_example)
-
-        fields_label = QLabel("Обязательные поля:")
-        fields_font = QFont()
-        fields_font.setBold(True)
-        fields_label.setFont(fields_font)
-        layout.addWidget(fields_label)
-
-        fields = QLabel("""
-• <b>sport</b> - вид спорта<br>
-• <b>tournament</b> - название турнира<br>
-• <b>country</b> - страна<br>
-• <b>team1, team2</b> - названия команд<br>
-• <b>date</b> - дата и время события (формат: DD.MM.YYYY HH:MM)<br>
-• <b>bookmakers</b> - список букмекеров (опционально)<br>
-• <b>coefficients</b> - объект с коэффициентами p1, x, p2 (опционально)
-        """)
-        fields.setTextFormat(Qt.TextFormat.RichText)
-        fields.setStyleSheet(f"color: {COLORS['muted_foreground']};")
-        layout.addWidget(fields)
+            # Подсказка о CSV формате
+            csv_hint = QLabel(" <i>Также поддерживается CSV формат с теми же полями</i>")
+            csv_hint.setTextFormat(Qt.TextFormat.RichText)
+            csv_hint.setStyleSheet(f"color: {COLORS['muted_foreground']}; font-size: 11px; margin-top: 4px; padding: 4px;")
+            layout.addWidget(csv_hint)
+        else:
+            # Для критических ошибок (БД, сеть) показываем только сообщение
+            help_text = QLabel("Проверьте подключение к базе данных и повторите попытку.")
+            help_text.setStyleSheet(f"color: {COLORS['muted_foreground']}; margin-top: 8px;")
+            help_text.setWordWrap(True)
+            layout.addWidget(help_text)
 
         layout.addStretch()
 
@@ -434,13 +628,13 @@ class EventsList(QWidget):
             )
             return
 
-        dialog = ImportDialog(self, db_manager=db_manager)
+        # Получаем главное окно
+        main_window = self.window()
+        dialog = ImportDialog(self, db_manager=db_manager, main_window=main_window)
         result = dialog.exec()
 
-        # Если импорт успешен, обновляем список событий
-        if result == QDialog.DialogCode.Accepted:
-            if hasattr(main_window, 'refresh_events') and callable(getattr(main_window, 'refresh_events')):
-                main_window.refresh_events()  # type: ignore
+        # Обновление списка событий теперь выполняется в on_import_finished
+        # до закрытия диалога, поэтому здесь ничего не делаем
 
     def select_event(self, event_id: int):
         if not self.table:

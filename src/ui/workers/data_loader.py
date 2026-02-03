@@ -7,6 +7,7 @@ class EventLoader(QObject):
     """Worker для загрузки события в отдельном потоке"""
 
     finished = Signal(object)  # Event object
+    all_events_loaded = Signal(list)  # List of all events
     error = Signal(str)
 
     def __init__(self, event_repository, event_id: int):
@@ -22,6 +23,17 @@ class EventLoader(QObject):
         except Exception as e:
             self.error.emit(str(e))
 
+    def load_all_events(self):
+        """Загрузка всех событий для обновления списка"""
+        try:
+            print("[EventLoader] Загрузка всех событий из БД...")
+            events = self.event_repository.get_all_events()
+            print(f"[EventLoader] Загружено {len(events)} событий")
+            self.all_events_loaded.emit(events)
+        except Exception as e:
+            print(f"[EventLoader] Ошибка загрузки событий: {e}")
+            self.error.emit(str(e))
+
 
 class ChartDataLoader(QObject):
     """Worker для загрузки данных графика в отдельном потоке"""
@@ -35,6 +47,7 @@ class ChartDataLoader(QObject):
         self.event_id = event_id
         self.bet_type = bet_type
         self.bookmaker = bookmaker
+        self.request_id = 0  # ID запроса для отслеживания актуальности данных
 
     def run(self):
         """Загрузка данных графика"""
@@ -68,6 +81,7 @@ class StatisticsDataLoader(QObject):
         self.odds_service = odds_service
         self.event_id = event_id
         self.bet_type = bet_type
+        self.request_id = 0  # ID запроса для отслеживания актуальности данных
 
     def run(self):
         """Загрузка статистики"""

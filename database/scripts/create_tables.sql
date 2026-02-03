@@ -69,6 +69,15 @@ CREATE TABLE odds_records (
 
 CREATE INDEX idx_events_datetime ON events(event_datetime);
 CREATE INDEX idx_events_tournament ON events(tournament_id);
+CREATE INDEX idx_events_teams ON events(team1_id, team2_id);
+CREATE INDEX idx_events_lookup ON events(team1_id, team2_id, tournament_id, event_datetime);
 CREATE INDEX idx_odds_records_event ON odds_records(event_id);
 CREATE INDEX idx_odds_records_recorded_at ON odds_records(recorded_at);
+CREATE INDEX idx_odds_records_lookup ON odds_records(event_id, bookmaker_id, bet_type_id, bet_parameter);
 CREATE INDEX idx_teams_sport ON teams(sport_id);
+CREATE INDEX idx_teams_name ON teams(team_name, sport_id);
+CREATE INDEX idx_tournaments_lookup ON tournaments(tournament_name, sport_id, country_id);
+CREATE INDEX idx_countries_name ON countries(country_name);
+CREATE INDEX idx_sports_name ON sports(sport_name);
+CREATE INDEX idx_bookmakers_name ON bookmakers(bookmaker_name);
+CREATE INDEX idx_bet_types_code ON bet_types(bet_type_code);

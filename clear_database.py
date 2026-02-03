@@ -3,7 +3,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import db_config
 from db_manager import DatabaseManager
 
 
@@ -21,7 +20,7 @@ def clear_all_data():
 
     print("\n1. Подключение к базе данных...")
     try:
-        db = DatabaseManager(db_config)
+        db = DatabaseManager.from_env()
         db.connect()
         print("✓ Подключение установлено")
     except Exception as e:

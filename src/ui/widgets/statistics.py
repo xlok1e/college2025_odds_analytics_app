@@ -92,6 +92,8 @@ class Statistics(QWidget):
 
         self.loader_thread = None
         self.loader_worker = None
+        self.loading_request_id = 0  # Счетчик запросов для отслеживания актуальности данных
+        self.pending_request_id = None  # ID ожидающего запроса
 
         self.setup_ui()
 
@@ -208,10 +210,21 @@ class Statistics(QWidget):
         # Показываем индикатор загрузки
         self.bet_label.setText(f"{self.bet_type} • Загрузка...")
 
-        # Останавливаем предыдущую загрузку если она еще идет
+        # Увеличиваем счетчик запросов
+        self.loading_request_id += 1
+        current_request_id = self.loading_request_id
+
+        # Если поток уже работает, сохраняем запрос и ждем завершения текущего
         if self.loader_thread and self.loader_thread.isRunning():
-            self.loader_thread.quit()
-            self.loader_thread.wait()
+            self.pending_request_id = current_request_id
+            return
+
+        # Запускаем загрузку
+        self.start_loading(current_request_id)
+
+    def start_loading(self, request_id: int):
+        """Запуск загрузки данных"""
+        self.pending_request_id = None
 
         # Создаем новый поток для загрузки данных
         self.loader_thread = QThread()
@@ -222,27 +235,36 @@ class Statistics(QWidget):
         )
         self.loader_worker.moveToThread(self.loader_thread)
 
+        # Сохраняем request_id в worker для проверки актуальности
+        self.loader_worker.request_id = request_id
+
         # Подключаем сигналы
         self.loader_thread.started.connect(self.loader_worker.run)
         self.loader_worker.finished.connect(self.on_data_loaded)
         self.loader_worker.error.connect(self.on_data_error)
-        self.loader_worker.finished.connect(self.loader_thread.quit)
-        self.loader_worker.error.connect(self.loader_thread.quit)
+        self.loader_worker.finished.connect(self.on_loading_complete)
+        self.loader_worker.error.connect(self.on_loading_complete)
 
         # Запускаем поток
         self.loader_thread.start()
 
     def on_data_loaded(self, stats):
         """Обработка загруженных данных"""
-        # ВСЕГДА испускаем сигнал, даже если виджет удален
-        self.data_loaded.emit()
+        # Проверяем актуальность данных - игнорируем устаревшие результаты
+        if self.loader_worker and hasattr(self.loader_worker, 'request_id') and self.loader_worker.request_id != self.loading_request_id:
+            print(f"[Statistics] Игнорируем устаревшие данные (request_id={self.loader_worker.request_id}, current={self.loading_request_id})")
+            # ВСЕГДА испускаем сигнал, даже для устаревших данных
+            self.data_loaded.emit()
+            return
 
         # Проверяем что виджет не был удален
         try:
             if not self.bet_label or self.bet_label.isHidden():
+                self.data_loaded.emit()
                 return
         except RuntimeError:
             # Виджет уже удален
+            self.data_loaded.emit()
             return
 
         self.bet_label.setText(self.bet_type)
@@ -302,10 +324,17 @@ class Statistics(QWidget):
                 # Виджеты уже удалены
                 return
 
+        # ВСЕГДА испускаем сигнал о завершении загрузки
+        self.data_loaded.emit()
+
     def on_data_error(self, error_message):
         """Обработка ошибки загрузки"""
-        # ВСЕГДА испускаем сигнал, даже если виджет удален
-        self.data_loaded.emit()
+        # Проверяем актуальность данных - игнорируем устаревшие ошибки
+        if self.loader_worker and hasattr(self.loader_worker, 'request_id') and self.loader_worker.request_id != self.loading_request_id:
+            print(f"[Statistics] Игнорируем устаревшую ошибку (request_id={self.loader_worker.request_id}, current={self.loading_request_id})")
+            # ВСЕГДА испускаем сигнал, даже для устаревших ошибок
+            self.data_loaded.emit()
+            return
 
         print(f"✗ Ошибка загрузки статистики: {error_message}")
 
@@ -316,6 +345,27 @@ class Statistics(QWidget):
         except RuntimeError:
             # Виджет уже удален
             pass
+
+        # ВСЕГДА испускаем сигнал о завершении загрузки
+        self.data_loaded.emit()
+
+    def on_loading_complete(self):
+        """Вызывается когда загрузка завершена (успешно или с ошибкой)"""
+        # Очищаем поток
+        if self.loader_thread:
+            self.loader_thread.quit()
+            self.loader_thread.wait()  # Теперь безопасно ждать
+            self.loader_worker.deleteLater()
+            self.loader_thread.deleteLater()
+            self.loader_thread = None
+            self.loader_worker = None
+
+        # Если есть ожидающий запрос, обрабатываем его
+        if self.pending_request_id is not None:
+            pending_id = self.pending_request_id
+            # Проверяем, что это все еще актуальный запрос
+            if pending_id == self.loading_request_id:
+                self.start_loading(pending_id)
 
     def update_data(self, event_id: int, bet_type: str, bookmaker: Optional[str] = None):
         """Обновление данных статистики"""
